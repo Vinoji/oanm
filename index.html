@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Happy Onam – Flowers & Crackers</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --gold: #ffd166;
+      --pink: #ff6b9a;
+      --green: #74d680;
+      --orange: #ff9f1c;
+      --violet: #a78bfa;
+      --soft: rgba(255,255,255,.08);
+    }
+    html, body { height: 100%; margin: 0; background: radial-gradient(1200px 800px at 70% 20%, #14223d, var(--bg)); color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'; }
+    .wrap { position: fixed; inset: 0; overflow: hidden; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .hud { position: absolute; inset: 0; pointer-events: none; display: grid; grid-template-rows: 1fr auto; }
+    .title { pointer-events: none; display: grid; place-items: center; padding-top: 2vh; text-align: center; }
+    .title h1 { margin: 0; font-size: clamp(36px, 6vw, 84px); letter-spacing: .03em; line-height: 1.05; font-weight: 900; position: relative; }
+    .title h1::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: -12px; width: 64%; height: 6px; background: linear-gradient(90deg, var(--gold), var(--pink), var(--violet)); border-radius: 999px; filter: blur(1px); opacity: .9; }
+    .subtitle { margin-top: 18px; font-size: clamp(14px, 2.4vw, 22px); opacity: .9; }
+    .mal { font-weight: 700; letter-spacing: .02em; }
+
+    .controls { pointer-events: auto; display: flex; flex-wrap: wrap; gap: 10px; padding: 18px; justify-content: center; }
+    .btn { appearance: none; border: 0; padding: 12px 16px; border-radius: 14px; font-weight: 700; letter-spacing: .02em; background: linear-gradient(180deg, #1b2a48, #121b2f); color: #eaf2ff; box-shadow: 0 10px 24px rgba(0,0,0,.35), inset 0 0 0 1px var(--soft); cursor: pointer; transform: translateY(0); transition: transform .12s ease, filter .2s ease; }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
+    .btn:active { transform: translateY(0); }
+    .tag { padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); font-size: 13px; }
+    .credit { position: absolute; right: 12px; bottom: 12px; opacity: .65; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="fx"></canvas>
+    <div class="hud">
+      <div class="title">
+        <div>
+          <h1>
+            <span style="background: linear-gradient(90deg, var(--gold), var(--pink), var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 18px rgba(255, 209, 102, .14));">Happy Onam</span>
+          </h1>
+          <div class="subtitle">
+            <span class="mal">ഓണമാശംസകൾ!</span> Wishing you joy, prosperity & lots of pookalam petals 🌼
+          </div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="btn" id="btnFlowers">Shower Flowers 🌼</button>
+        <button class="btn" id="btnCrackers">Burst Crackers 🎆</button>
+        <button class="btn" id="btnBoth">Celebrate Both ✨</button>
+        <span class="tag">Tip: Click anywhere for fireworks. Move mouse / touch to sprinkle petals.</span>
+      </div>
+    </div>
+    <div class="credit">Made with ♥ in JavaScript</div>
+  </div>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('fx');
+    const ctx = canvas.getContext('2d');
+
+    // DPR-aware resize
+    const state = { w: 0, h: 0, dpr: Math.min(2, window.devicePixelRatio || 1), time: 0 };
+    function resize() {
+      state.w = canvas.clientWidth; state.h = canvas.clientHeight;
+      const { dpr } = state; canvas.width = Math.floor(state.w * dpr); canvas.height = Math.floor(state.h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    addEventListener('resize', resize, { passive: true }); resize();
+
+    // Utility
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const randInt = (a, b) => Math.floor(rand(a, b));
+    const TAU = Math.PI * 2;
+
+    // BACKGROUND STARS (gentle twinkle)
+    const stars = Array.from({ length: 80 }, () => ({
+      x: Math.random(), y: Math.random(), r: rand(.5, 1.6), p: rand(0, TAU)
+    }));
+
+    // PETAL PARTICLES (flowers)
+    const petals = [];
+    function addPetal(x = rand(0, state.w), y = -20, burst = false) {
+      const huePick = [45, 28, 10, 330, 270][randInt(0,5)]; // marigold/orange/pink/violet accents
+      const size = burst ? rand(10, 18) : rand(8, 14);
+      petals.push({ x, y, vx: rand(-.7, .7), vy: rand(1.2, 2.4), g: rand(.012, .02),
+        rot: rand(0, TAU), rotSpd: rand(-.05, .05), size, hue: huePick, life: 0, max: rand(4,7) });
+    }
+
+    function drawPetal(p) {
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      const s = p.size;
+      const grd = ctx.createRadialGradient(0,0, s*0.1, 0,0, s);
+      grd.addColorStop(0, `hsla(${p.hue}, 95%, 72%, .95)`);
+      grd.addColorStop(1, `hsla(${p.hue}, 85%, 52%, .65)`);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      // heart-like petal using bezier
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(-s*0.8, -s*0.6, -s*1.0, s*0.2, 0, s);
+      ctx.bezierCurveTo(s*1.0, s*0.2, s*0.8, -s*0.6, 0, 0);
+      ctx.closePath();
+      ctx.fill();
+      // subtle highlight
+      ctx.globalAlpha = .6; ctx.fillStyle = 'rgba(255,255,255,.6)';
+      ctx.beginPath(); ctx.ellipse(-s*0.2, s*0.15, s*0.15, s*0.08, -0.3, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+
+    // FIREWORKS
+    const rockets = []; // pre-explosion
+    const sparks = [];  // post-explosion particles
+
+    function launch(x = rand(0.2, 0.8) * state.w) {
+      const targetY = rand(0.18, 0.38) * state.h;
+      const speed = rand(6.2, 7.4);
+      rockets.push({ x, y: state.h + 6, vx: rand(-1.2, 1.2), vy: -speed, ax: 0, ay: 0.08, color: randInt(0, 360), targetY });
+    }
+
+    function explode(x, y, hue) {
+      const n = randInt(80, 120);
+      for (let i = 0; i < n; i++) {
+        const ang = Math.random() * TAU, spd = rand(1.5, 4.2) * (Math.random() < .85 ? 1 : 1.6);
+        sparks.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, life: 0, max: rand(40, 80), hue: hue + rand(-15, 15), glow: rand(0.6, 1), fade: rand(.012, .028) });
+      }
+      // shower some petals on explosion for fusion feel
+      for (let i = 0; i < 20; i++) addPetal(x + rand(-30, 30), y + rand(-20, 20), true);
+    }
+
+    // INTERACTION
+    let autoCrackers = true, autoFlowers = true;
+    let lastFlower = 0, flowerRate = 80; // ms
+
+    canvas.addEventListener('pointermove', (e) => {
+      const now = performance.now();
+      if (now - lastFlower > flowerRate) {
+        const rect = canvas.getBoundingClientRect();
+        addPetal((e.clientX - rect.left), (e.clientY - rect.top) - 10, false);
+        lastFlower = now;
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      explode(x, y, randInt(0,360));
+    });
+
+    document.getElementById('btnFlowers').addEventListener('click', () => {
+      autoFlowers = !autoFlowers;
+      document.getElementById('btnFlowers').textContent = autoFlowers ? 'Stop Flowers 🌼' : 'Shower Flowers 🌼';
+    });
+    document.getElementById('btnCrackers').addEventListener('click', () => {
+      autoCrackers = !autoCrackers;
+      document.getElementById('btnCrackers').textContent = autoCrackers ? 'Stop Crackers 🎆' : 'Burst Crackers 🎆';
+    });
+    document.getElementById('btnBoth').addEventListener('click', () => {
+      autoFlowers = autoCrackers = true;
+      document.getElementById('btnFlowers').textContent = 'Stop Flowers 🌼';
+      document.getElementById('btnCrackers').textContent = 'Stop Crackers 🎆';
+    });
+
+    // MAIN LOOP
+    let last = performance.now();
+    function tick(now) {
+      const dt = Math.min(40, now - last) / 16.666; // normalize ~60fps
+      last = now; state.time += dt;
+
+      // Auto-spawn
+      if (autoFlowers && Math.random() < 0.35) addPetal();
+      if (autoCrackers && Math.random() < 0.03) launch();
+
+      // Clear with slight alpha for trails
+      ctx.clearRect(0, 0, state.w, state.h);
+
+      // Twinkling stars
+      for (const s of stars) {
+        const x = s.x * state.w, y = s.y * state.h;
+        const tw = (Math.sin(state.time * 0.9 + s.p) + 1) * 0.5;
+        ctx.globalAlpha = 0.25 + tw * 0.35;
+        ctx.beginPath(); ctx.arc(x, y, s.r, 0, TAU); ctx.fillStyle = '#ffffff'; ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // Update rockets
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i];
+        r.vx += r.ax * dt; r.vy += r.ay * dt; r.x += r.vx * dt * 2; r.y += r.vy * dt * 2;
+        // trail
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const grad = ctx.createLinearGradient(r.x, r.y+6, r.x, r.y-24);
+        grad.addColorStop(0, `hsla(${r.color}, 100%, 70%, 0)`);
+        grad.addColorStop(1, `hsla(${r.color}, 100%, 70%, .85)`);
+        ctx.strokeStyle = grad; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(r.x, r.y+6); ctx.lineTo(r.x, r.y-24); ctx.stroke();
+        ctx.restore();
+        if (r.vy >= -0.5 || r.y < r.targetY) { // explode
+          explode(r.x, r.y, r.color); rockets.splice(i, 1);
+        }
+      }
+
+      // Update sparks
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const p = sparks[i];
+        p.vy += 0.04 * dt; p.vx *= (1 - 0.01*dt); p.vy *= (1 - 0.002*dt); p.x += p.vx * 2 * dt; p.y += p.vy * 2 * dt;
+        p.life += 1 * dt; const alpha = Math.max(0, 1 - p.fade * p.life);
+        if (alpha <= 0 || p.life > p.max) { sparks.splice(i, 1); continue; }
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const r = 1.2 + (p.glow * (1 - p.life/p.max) * 3);
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 6);
+        g.addColorStop(0, `hsla(${p.hue}, 100%, 60%, ${alpha})`);
+        g.addColorStop(1, `hsla(${p.hue}, 100%, 60%, 0)`);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r * 3, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+
+      // Update petals
+      for (let i = petals.length - 1; i >= 0; i--) {
+        const p = petals[i]; p.vy += p.g * dt; p.x += p.vx * 2 * dt; p.y += p.vy * 2 * dt; p.rot += p.rotSpd * dt; p.life += dt;
+        drawPetal(p);
+        if (p.y > state.h + 40) petals.splice(i, 1);
+      }
+
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // Initial celebratory burst
+    setTimeout(() => {
+      for (let i = 0; i < 3; i++) setTimeout(() => launch(rand(0.25, 0.75) * state.w), i * 300);
+      for (let i = 0; i < 80; i++) addPetal(rand(0, state.w), rand(0, state.h * 0.6), true);
+    }, 500);
+  })();
+  </script>
+</body>
+</html>
